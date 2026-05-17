@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\kandu\\\\smart-inventory-platform\" -Recurse -Force)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Sort-Object)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\kandu\\\\smart-inventory-platform\" -Recurse -Force | Where-Object {$_.Name -match \"\\(docker-compose|README|prometheus|grafana\\)\" -or $_.Extension -eq \".yml\"} | Select-Object -ExpandProperty FullName)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\kandu\\\\smart-inventory-platform\" -Depth 0 -Force | Select-Object Name, FullName, @{Name=\"Type\";Expression={if\\($_.PSIsContainer\\){\"Directory\"}else{\"File\"}}}  | Sort-Object Name)",
+      "Bash(grep -E \"\\\\.\\(sql|yml|yaml\\)$\")"
+    ]
+  }
+}
