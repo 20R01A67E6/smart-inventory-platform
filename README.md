@@ -1,155 +1,189 @@
 # Smart Inventory & Order Fulfillment Platform
 
-A production-grade, event-driven microservices platform built with Java 17, Spring Boot 3, and Apache Kafka. It handles inventory management, order processing, payment coordination, and ML-driven demand forecasting using the Saga orchestration pattern and transactional outbox.
+A production-grade, event-driven microservices platform with a Next.js dashboard. Orders flow through an Apache Kafka-backed saga, inventory is managed with pessimistic locking and Redis caching, payments use a Resilience4j circuit breaker, and an ML engine predicts restock needs using Weighted Moving Average demand forecasting.
+
+## Repository Structure
+
+```
+smart-inventory-platform/
+├── backend/                  Java 17 · Spring Boot 3 · Apache Kafka
+│   ├── common/               Shared events, DTOs, Kafka topic constants
+│   ├── api-gateway/          :8080  JWT auth · Redis rate limiting
+│   ├── order-service/        :8081  Orders · Saga orchestration · Outbox
+│   ├── inventory-service/    :8082  Stock · Pessimistic lock · Redis cache
+│   ├── payment-service/      :8083  Payments · Circuit breaker
+│   ├── notification-service/ :8084  Event fan-out
+│   ├── ml-restock-engine/    :8085  WMA demand forecasting
+│   ├── docker-compose.yml    Full local stack
+│   └── monitoring/           Prometheus + Grafana
+├── frontend/                 Next.js 14 · TypeScript · Tailwind :3001
+├── docs/
+│   └── architecture.md       Detailed system design
+└── .github/workflows/        Backend CI · Frontend CI
+```
 
 ## Architecture
 
 ```
-                        ┌─────────────┐
-                        │ API Gateway │  :8080
-                        │ (JWT + Rate  │
-                        │  Limiting)  │
-                        └──────┬──────┘
-             ┌─────────────────┼─────────────────┐
-             │                 │                 │
-    ┌────────▼──────┐ ┌────────▼──────┐ ┌────────▼──────┐
-    │ Order Service │ │  Inventory    │ │   Payment     │
-    │    :8081      │ │  Service :8082│ │  Service :8083│
-    │  (Saga Orch.) │ │ (Redis cache) │ │ (Resilience4j)│
-    └────────┬──────┘ └────────┬──────┘ └────────┬──────┘
-             │                 │                 │
-             └────────────┬────┘─────────────────┘
-                          │  Apache Kafka
-                          │  (10 topics)
-             ┌────────────┼─────────────────────────┐
-             │            │                         │
-    ┌─────────▼──────┐  ┌─▼─────────────┐  ┌───────▼────────┐
-    │ Notification   │  │  ML Restock   │  │  PostgreSQL x4 │
-    │ Service :8084  │  │ Engine :8085  │  │  (per-service) │
-    │ (event fanout) │  │ (WMA forecast)│  └────────────────┘
-    └────────────────┘  └───────────────┘
+                           ┌─────────────────────┐
+[Browser :3001] ──────────▶│    Next.js Frontend  │
+                           │  TanStack Query      │
+                           │  Recharts · Radix UI │
+                           └──────────┬──────────┘
+                                      │ REST
+                           ┌──────────▼──────────┐
+                           │     API Gateway      │ :8080
+                           │  JWT · Rate Limit    │
+                           └──────────┬──────────┘
+              ┌────────────────────────┼───────────────────────┐
+              │                        │                        │
+   ┌──────────▼──────┐    ┌────────────▼──────┐    ┌──────────▼──────┐
+   │  Order Service  │    │Inventory Service  │    │Payment Service  │
+   │    :8081        │    │    :8082          │    │    :8083        │
+   │  Saga · Outbox  │    │ Pessimistic Lock  │    │ Circuit Breaker │
+   │  orders_db      │    │ Redis Cache       │    │ payments_db     │
+   └──────────┬──────┘    │ inventory_db      │    └─────────────────┘
+              │           └───────────────────┘
+              │
+              └─────────────────── Apache Kafka ─────────────────────┐
+                                  (10 topics)                        │
+                         ┌──────────────────┐   ┌───────────────────▼───┐
+                         │Notification Svc  │   │  ML Restock Engine    │
+                         │    :8084         │   │      :8085            │
+                         │  Event fan-out   │   │  WMA Forecasting      │
+                         └──────────────────┘   │  ml_db                │
+                                                └───────────────────────┘
 ```
 
 ### Saga Flow (Happy Path)
 
 ```
-OrderCreated → InventoryReserved → PaymentProcessed → OrderConfirmed
+order.created → inventory.reserved → payment.processed → order.confirmed
 ```
 
-On failure, compensating events (`InventoryReleased`, `OrderCancelled`) are published automatically by the saga orchestrator.
+Compensation on failure:
 
-### Kafka Topics
+```
+inventory.reservation.failed → order.cancelled → inventory.released
+payment.failed               → order.cancelled → inventory.released
+```
 
-| Topic | Producer | Consumers |
-|---|---|---|
-| `order.created` | order-service | inventory-service, notification-service |
-| `order.confirmed` | order-service | notification-service |
-| `order.cancelled` | order-service | inventory-service, notification-service |
-| `inventory.reserved` | inventory-service | payment-service, notification-service |
-| `inventory.reservation.failed` | inventory-service | order-service (saga), notification-service |
-| `inventory.released` | inventory-service | notification-service |
-| `inventory.low-stock` | inventory-service | ml-restock-engine, notification-service |
-| `payment.processed` | payment-service | order-service (saga), notification-service |
-| `payment.failed` | payment-service | inventory-service, order-service (saga), notification-service |
-| `ml.restock.recommended` | ml-restock-engine | notification-service |
+## Tech Stack
 
-## Services
+| Layer | Technology |
+|---|---|
+| API Gateway | Spring Cloud Gateway 2023.0.1 |
+| Backend services | Java 17 · Spring Boot 3.2.5 |
+| Event streaming | Apache Kafka 7.6.1 (Confluent) |
+| Databases | PostgreSQL 16 (per-service) |
+| Cache / Rate limit | Redis 7 |
+| Resilience | Resilience4j (circuit breaker + retry) |
+| ML / Forecasting | Custom WMA — pure Java |
+| Frontend | Next.js 14 · React 18 · TypeScript 5 |
+| Styling | Tailwind CSS 3 · Radix UI |
+| Charts | Recharts 2 |
+| Data fetching | TanStack Query 5 |
+| Observability | Prometheus · Grafana 11 |
+| Build | Maven 3 (multi-module) · npm |
+| Container | Docker Compose v2 |
 
-| Service | Port | Database | Notes |
-|---|---|---|---|
-| api-gateway | 8080 | — | Spring Cloud Gateway, JWT auth, Redis rate limiter |
-| order-service | 8081 | orders_db | Saga orchestrator, transactional outbox |
-| inventory-service | 8082 | inventory_db | Redis cache, optimistic locking |
-| payment-service | 8083 | payments_db | Resilience4j circuit breaker + retry |
-| notification-service | 8084 | — | Kafka fanout, event logging |
-| ml-restock-engine | 8085 | ml_db | Weighted Moving Average demand forecasting |
-
-## Getting Started
+## Running Locally
 
 ### Prerequisites
 
-- Docker Desktop 4.x+
-- Docker Compose v2+
+- Docker Desktop 4.x+ with Compose v2
+- 8 GB RAM recommended (10 containers)
 
-### Run everything
+### Start everything
 
 ```bash
+cd backend
 docker compose up --build
 ```
 
-First startup takes ~3 minutes while Maven downloads dependencies and databases initialise via Flyway.
+First boot takes ~3 minutes while Maven resolves dependencies and Flyway runs migrations. Services start in dependency order (Postgres → Kafka → Redis → services → observability).
 
-### Service endpoints (via API Gateway)
+### Frontend development server
 
-```
-POST   /api/orders                           Create order
-GET    /api/orders/{id}                      Get order
-GET    /api/products                         List products
-GET    /api/products/{id}                    Get product
-POST   /api/inventory/products               Create product
-POST   /api/payments/process                 Process payment
-GET    /api/forecasts/alerts                 Pending restock alerts
-GET    /api/forecasts/alerts/{productId}/latest  Latest alert
-POST   /api/forecasts/run/{productId}        Trigger manual forecast
+```bash
+cd frontend
+npm install
+npm run dev          # http://localhost:3001
 ```
 
-### Observability
+> The frontend expects the API Gateway at `http://localhost:8080`. Set `NEXT_PUBLIC_API_URL` in `frontend/.env.local` to override.
+
+## API Endpoints (via Gateway on :8080)
+
+### Orders
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/orders` | Place a new order |
+| `GET` | `/api/orders/{id}` | Get order by ID |
+| `GET` | `/api/orders/customer/{customerId}` | List orders for a customer |
+
+### Inventory
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/products` | List all active products |
+| `GET` | `/api/products/{id}` | Get product by ID |
+| `POST` | `/api/inventory/products` | Create product |
+| `PUT` | `/api/inventory/products/{id}/stock` | Update stock level |
+
+### Payments
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/payments/process` | Process payment |
+| `GET` | `/api/payments/{orderId}` | Get payment for order |
+
+### ML Forecasts
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/forecasts/alerts` | List pending restock alerts |
+| `GET` | `/api/forecasts/alerts/{productId}/latest` | Latest alert for product |
+| `POST` | `/api/forecasts/run/{productId}` | Trigger manual forecast |
+
+## Observability
 
 | UI | URL | Credentials |
 |---|---|---|
 | Grafana | http://localhost:3000 | admin / admin |
 | Prometheus | http://localhost:9090 | — |
 | Kafka UI | http://localhost:9080 | — |
-
-### Swagger / OpenAPI
-
-Each service exposes interactive API docs:
-
-- Order Service: http://localhost:8081/swagger-ui.html
-- Inventory Service: http://localhost:8082/swagger-ui.html
-- Payment Service: http://localhost:8083/swagger-ui.html
-- ML Restock Engine: http://localhost:8085/swagger-ui.html
-
-## Key Design Decisions
-
-**Transactional Outbox** — Order service writes Kafka events to a local `outbox_messages` table in the same transaction as the order record, then a scheduler publishes and cleans them. Prevents dual-write inconsistencies.
-
-**Optimistic Locking on Inventory** — The `products` table has a `version` column; concurrent reservation attempts fail fast with a version conflict rather than over-committing stock.
-
-**Weighted Moving Average Forecasting** — The ML engine uses a 7-day WMA over 30-day history to predict daily demand. A restock alert is generated when `days_until_stockout < 14`. Triggered automatically on `inventory.low-stock` events.
-
-**Circuit Breaker on Payments** — Resilience4j opens the circuit after 50% failure rate over a 10-call sliding window, preventing cascading failures from a degraded payment gateway.
+| Swagger (order) | http://localhost:8081/swagger-ui.html | — |
+| Swagger (inventory) | http://localhost:8082/swagger-ui.html | — |
+| Swagger (payment) | http://localhost:8083/swagger-ui.html | — |
+| Swagger (ML) | http://localhost:8085/swagger-ui.html | — |
 
 ## Development
 
-### Build without Docker
-
 ```bash
-# Build all modules
-mvn clean package -DskipTests
+# Build all backend modules (skip tests)
+cd backend && mvn clean package -DskipTests
 
-# Run a service locally (requires Postgres/Kafka/Redis running)
-java -jar order-service/target/order-service-1.0.0-SNAPSHOT.jar
+# Run all backend tests
+cd backend && mvn test
+
+# Lint frontend
+cd frontend && npm run lint
+
+# Type-check frontend
+cd frontend && npx tsc --noEmit
 ```
 
-### Run tests
+## Seed Products (for testing)
 
-```bash
-mvn test
-```
-
-### Environment variables
-
-All services accept these environment overrides:
-
-| Variable | Default | Description |
+| Product ID | Name | Stock |
 |---|---|---|
-| `DB_HOST` | localhost | PostgreSQL host |
-| `DB_PORT` | 5432 | PostgreSQL port |
-| `DB_USER` | inventory_user | DB username |
-| `DB_PASS` | inventory_pass | DB password |
-| `KAFKA_BOOTSTRAP_SERVERS` | localhost:9092 | Kafka brokers |
-| `REDIS_HOST` | localhost | Redis host |
-| `REDIS_PORT` | 6379 | Redis port |
-| `JWT_SECRET` | (dev default) | HS256 signing key (min 256 bits) |
-| `GRAFANA_PASSWORD` | admin | Grafana admin password |
+| `11111111-1111-1111-1111-111111111111` | Laptop Pro 15 | 50 |
+| `22222222-2222-2222-2222-222222222222` | Wireless Mouse | 200 |
+| `33333333-3333-3333-3333-333333333333` | USB-C Hub | 150 |
+| `44444444-4444-4444-4444-444444444444` | Standing Desk Mat | 75 |
+| `55555555-5555-5555-5555-555555555555` | Mechanical Keyboard | 8 |
+| `a1b2c3d4-e5f6-7890-abcd-ef1234567890` | Test Widget Alpha | 100 |
+
+See [`docs/architecture.md`](docs/architecture.md) for the full system design.

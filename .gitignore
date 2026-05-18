@@ -1,5 +1,5 @@
 # Maven
-target/
+backend/**/target/
 *.class
 *.jar
 *.war
@@ -27,3 +27,12 @@ logs/
 
 # Docker
 .env
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/*.tsbuildinfo
+
+# Claude
+.claude/

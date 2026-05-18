@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+    --card: 217 33% 17%;
+    --card-foreground: 210 40% 98%;
+    --popover: 217 33% 17%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 46 65% 52%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 217 33% 24%;
+    --secondary-foreground: 215 20% 65%;
+    --muted: 217 33% 22%;
+    --muted-foreground: 215 20% 55%;
+    --accent: 46 65% 52%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217 33% 24%;
+    --input: 217 33% 22%;
+    --ring: 46 65% 52%;
+    --radius: 0.75rem;
+
+    --gold: #d4af37;
+    --gold-light: #e8c95a;
+    --gold-muted: rgba(212, 175, 55, 0.15);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-background;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground));
+  }
+}
+
+@layer utilities {
+  .gold-gradient {
+    background: linear-gradient(135deg, #d4af37 0%, #f0d060 50%, #d4af37 100%);
+  }
+
+  .gold-text {
+    color: #d4af37;
+  }
+
+  .gold-border {
+    border-color: #d4af37;
+  }
+
+  .glass-card {
+    backdrop-filter: blur(12px);
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(212, 175, 55, 0.1);
+  }
+}
